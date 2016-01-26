@@ -12,69 +12,69 @@ type ModelState v = Map String v
 type Simulation' v = Random.RandT StdGen (State (ModelState v))
 
 -- v1
-type Simulation v = State.StateT (ModelState v) (Rand StdGen)
+type Simulation v r = State.StateT (ModelState v, r) (Rand StdGen)
 
 -- v2
 
-getValue :: String -> Simulation v v
+getValue :: String -> Simulation v r v
 getValue name =
-  do ms <- State.get
+  do (ms, _) <- State.get
      let (Just v) = Map.lookup name ms
      return v
 
-setValue :: String -> v -> Simulation v ()
+setValue :: String -> v -> Simulation v r ()
 setValue name value =
-  do ms <- State.get
-     State.put (Map.insert name value ms)
+  do (ms, r) <- State.get
+     State.put (Map.insert name value ms, r)
 
-modifyValue :: String -> (v -> v) -> Simulation v ()
+modifyValue :: String -> (v -> v) -> Simulation v r ()
 modifyValue name f =
-  State.modify (\ ms -> Map.adjust (\ v -> f  v) name ms)
+  State.modify (\ (ms, r) -> (Map.adjust (\ v -> f  v) name ms, r))
   
-data Model v = Model String (Event v)
+data Model v r = Model String (Event v r)
 
-type Condition v = Simulation v Bool
+type Condition v r = Simulation v r Bool
 
-trueCondition :: Condition v
+trueCondition :: Condition v r
 trueCondition = return True
 
-largerThanValueCondition :: Ord a => String -> a -> Condition a
+largerThanValueCondition :: Ord a => String -> a -> Condition a r
 largerThanValueCondition name value =
   do value' <- getValue name
      return (value' > value)
 
-type Delay v = Simulation v Integer
+type Delay v r = Simulation v r Integer
 
-zeroDelay :: Delay v
+zeroDelay :: Delay v r
 zeroDelay = return 0
-constantDelay :: Integer -> Delay Integer
+constantDelay :: Integer -> Delay v r
 constantDelay v = return v
 
-exponentialDelay :: Double -> Delay v
+exponentialDelay :: Double -> Delay v r
 exponentialDelay mean =
   do u <- getRandom
      return (round (-mean * log u))
   
-data Transition v = Transition { targetEvent :: Event v,
-                                 condition :: Condition v,
-                                 delay :: Delay v,
-                                 inhibiting :: Bool }
+data Transition v r = Transition { targetEvent :: Event v r,
+                                   condition :: Condition v r,
+                                   delay :: Delay v r,
+                                   inhibiting :: Bool }
 
 transition = Transition { targetEvent = undefined, condition = trueCondition, delay = zeroDelay, inhibiting = False }
 
 type StateChange v = Simulation v ()
 
-incrementValue :: Num a => String -> a -> Simulation a ()
+incrementValue :: Num a => String -> a -> Simulation a r ()
 incrementValue name inc =
   modifyValue name ((+) inc)
   
 
-data Event v = Event { name :: String,
-                       priority :: Int,
-                       transitions :: [Transition v],
-                       stateChanges :: [StateChange v] }
+data Event v r = Event { name :: String,
+                         priority :: Int,
+                         transitions :: [Transition v r],
+                         stateChanges :: [StateChange v r] }
 
-instance Eq (Event v) where
+instance Eq (Event v r) where
   e1 == e2 = (name e1) == (name e2)
 
 event = Event { name = "UNKNOWN", priority = 0, transitions = [], stateChanges = [] }
@@ -114,14 +114,11 @@ minimalModel =
 
 type Time = Integer
 
-data EventInstance v = EventInstance (Event v) Time
+data EventInstance v r = EventInstance (Event v r) Time
   deriving Eq
 
-instance Ord (EventInstance v) where
+instance Ord (EventInstance v r) where
   compare (EventInstance e1 t1) (EventInstance e2 t2) =
     case compare t1 t2 of
       EQ -> compare (priority e1) (priority e2)
       x -> x
-
-
-
