@@ -1,10 +1,11 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 import Control.Monad.State.Strict as State
 import Control.Monad.State.Strict (State)
 import Control.Monad.Random as Random
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.Queue as Queue
+import Data.Sequence as Sequence
 
 type ModelState v = Map String v
 
@@ -16,9 +17,14 @@ type Simulation v r = State.StateT (ModelState v, r) (Rand StdGen)
 
 -- v2
 
+getModelState :: Simulation v r (ModelState v)
+getModelState =
+  do (ms, _) <- State.get
+     return ms
+
 getValue :: String -> Simulation v r v
 getValue name =
-  do (ms, _) <- State.get
+  do ms <- getModelState
      let (Just v) = Map.lookup name ms
      return v
 
@@ -31,7 +37,10 @@ modifyValue :: String -> (v -> v) -> Simulation v r ()
 modifyValue name f =
   State.modify (\ (ms, r) -> (Map.adjust (\ v -> f  v) name ms, r))
   
-data Model v r = Model String (Event v r)
+data Model v r = Model {
+  modelName :: String,
+  startEvent :: Event v r
+  }
 
 type Condition v r = Simulation v r Bool
 
@@ -114,11 +123,24 @@ minimalModel =
 
 type Time = Integer
 
-data EventInstance v r = EventInstance (Event v r) Time
+data EventInstance v r = EventInstance Time (Event v r)
   deriving Eq
 
 instance Ord (EventInstance v r) where
-  compare (EventInstance e1 t1) (EventInstance e2 t2) =
+  compare (EventInstance t1 e1) (EventInstance t2 e2) =
     case compare t1 t2 of
       EQ -> compare (priority e1) (priority e2)
       x -> x
+
+class ReportGenerator r v where
+  update :: r -> Time -> ModelState v -> r
+  writeReport :: r -> IO ()
+
+newtype Clock = Clock { getCurrentTime :: Time }
+
+runSimulation model endTime reportGenerator =
+  let clock = Clock 0
+      modelState = Map.empty
+      initialEvent = EventInstance (getCurrentTime clock) (startEvent model)
+      eventList = Sequence.singleton initialEvent
+  in undefined
