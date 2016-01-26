@@ -2,7 +2,7 @@
 let
   inherit (nixpkgs) pkgs;
   ghc = nixpkgs.haskellPackages.ghcWithPackages (ps: with ps; [
-          MonadRandom queue
+          MonadRandom
         ]);
 in
 pkgs.stdenv.mkDerivation {
