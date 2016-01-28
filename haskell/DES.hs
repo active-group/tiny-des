@@ -168,12 +168,15 @@ updateStatisticalCounters (EventInstance t _) =
 generateEvents (EventInstance _ ev) =
   mapM_ (\ tr ->
           do t <- State.lift (condition tr)
-             (clock, evs, r) <- State.get
-             d <- State.lift (delay tr)
-             let evi = EventInstance ((getCurrentTime clock) + d) (targetEvent tr)
-             let evs' = Heap.insert evi evs
-             State.put (clock, evs', r))
-        (transitions ev)
+             if t then
+               do (clock, evs, r) <- State.get
+                  d <- State.lift (delay tr)
+                  let evi = EventInstance ((getCurrentTime clock) + d) (targetEvent tr)
+                  let evs' = Heap.insert evi evs
+                  State.put (clock, evs', r)
+             else
+               return ())
+         (transitions ev)
 
 timingRoutine :: Simulation r v (EventInstance v)
 timingRoutine =
@@ -191,6 +194,7 @@ runSimulation model endTime reportGenerator =
         do (clock, evs, r) <- State.get
            if ((getCurrentTime clock) <= endTime) && not (Heap.null evs) then
              do currentEvent <- timingRoutine
+                -- seq (unsafePerformIO (putStrLn (show currentEvent))) (updateSystemState currentEvent)
                 updateSystemState currentEvent
                 updateStatisticalCounters currentEvent
                 generateEvents currentEvent
