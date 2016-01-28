@@ -1,14 +1,15 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleContexts #-}
 import qualified Control.Monad.State.Strict as State
 import Control.Monad.State.Strict (State)
 import qualified Control.Monad.Random as Random
 import System.Random (mkStdGen)
-import qualified Data.Map as Map
-import Data.Map (Map)
+import qualified Data.Map.Strict as Map
+import Data.Map.Strict (Map)
 import qualified Data.Sequence as Sequence
 import Data.Sequence (Seq, (|>), ViewL ((:<)))
+import System.IO.Unsafe (unsafePerformIO)
 
 type ModelState v = Map String v
 
@@ -82,6 +83,9 @@ data Event v = Event { name :: String,
 instance Eq (Event v) where
   e1 == e2 = (name e1) == (name e2)
 
+instance Show (Event v) where
+  show e = "Event { name = " ++ (name e) ++ " }"
+
 event = Event { name = "UNKNOWN", priority = 0, transitions = [], stateChanges = [] }
 
 minimalModel =
@@ -120,8 +124,7 @@ minimalModel =
 type Time = Integer
 
 data EventInstance v = EventInstance Time (Event v)
-
-  deriving Eq
+  deriving (Show, Eq)
 
 instance Ord (EventInstance v) where
   compare (EventInstance t1 e1) (EventInstance t2 e2) =
@@ -134,6 +137,7 @@ class ReportGenerator r v | r -> v where
   writeReport :: r -> IO ()
 
 newtype Clock = Clock { getCurrentTime :: Time }
+  deriving Show
 
 type Simulation r v = State.StateT (Clock, Seq (EventInstance v), r) (ModelAction v)
 
@@ -149,6 +153,8 @@ getNextEvent =
 
 updateSystemState :: EventInstance v -> Simulation r v ()
 updateSystemState (EventInstance _ ev) = State.lift (sequence_ (stateChanges ev))
+
+-- FIXME: Don't update incrementally, instead do everything based on consistent old state.
 
 updateStatisticalCounters :: ReportGenerator r v => EventInstance v -> Simulation r v ()
 updateStatisticalCounters (EventInstance t _) =
@@ -173,21 +179,118 @@ timingRoutine =
      setCurrentTime t
      return result
 
-runSimulation :: ReportGenerator r v => Model v -> Time -> r -> IO ()
+-- runSimulation :: ReportGenerator r v => Model v -> Time -> r -> IO _
 runSimulation model endTime reportGenerator =
   let clock = Clock 0
-      modelState = Map.empty
       initialEvent = EventInstance (getCurrentTime clock) (startEvent model)
       eventList = Sequence.singleton initialEvent
-      state0 = (clock, eventList)
       loop =
         do (clock, evs, r) <- State.get
            if ((getCurrentTime clock) <= endTime) && not (Sequence.null evs) then
              do currentEvent <- timingRoutine
+                updateSystemState currentEvent
+                updateStatisticalCounters currentEvent
                 generateEvents currentEvent
                 loop
            else
              return ()
   in let ma = State.execStateT loop (clock, eventList, reportGenerator)
-         (_, _, r) = Random.evalRand (State.evalStateT ma Map.empty) (mkStdGen 0)
-      in writeReport r
+         (cl', evs, r) = Random.evalRand (State.evalStateT ma Map.empty) (mkStdGen 0)
+      in do writeReport r
+            return (cl', evs, r)
+
+-- Report generator
+
+data Value = Value {
+  valueTime :: Time,
+  valueValue :: Maybe Integer,
+  valueMin :: Maybe Integer,
+  valueMax :: Maybe Integer,
+  valueAverage :: Double
+}
+
+defaultValue = Value {
+  valueMin = Nothing,
+  valueMax = Nothing,
+  valueAverage = 0.0,
+  valueValue = Nothing,
+  valueTime = 0
+  }
+  
+updateAvg :: Value -> Time -> Integer -> Double
+updateAvg value currentTime currentValue =
+  case valueValue value of
+    Just v ->
+      if currentTime /= 0 then
+        ((valueAverage value) * (fromInteger (valueTime value))
+         + ((fromInteger currentTime) - (fromInteger (valueTime value))) * (fromInteger v))
+        / (fromInteger currentTime)
+      else
+        valueAverage value
+    Nothing -> valueAverage value
+
+valueWithCurrent :: Value -> Time -> Integer -> Value
+valueWithCurrent value t v =
+  value { valueMin = valueNewMin value v,
+          valueMax = valueNewMax value v,
+          valueAverage = updateAvg value t v,
+          valueTime = t,
+          valueValue = Just v }
+
+valueNewMin value current =
+  case valueMin value of
+    Just m -> Just (min current m)
+    Nothing -> Just current
+
+valueNewMax value current =
+  max (Just current) (valueMax value)
+
+separator = ";\t"
+
+valueHeader :: String
+valueHeader =
+  "Time" ++ separator ++ "Value" ++ separator ++ "Min" ++ separator ++ "Max" ++ separator ++ "Avg" ++ separator
+
+instance Show Value where
+  show value =
+    let sm x = case x of
+          Just v -> show v
+          Nothing -> "<>"
+    in      
+      (show (valueTime value)) ++ separator ++
+      (sm (valueValue value)) ++ separator ++
+      (sm (valueMin value)) ++ separator ++
+      (sm (valueMax value)) ++ separator ++
+      (show (valueAverage value)) ++ separator
+         
+data FullReportGenerator = FullReportGenerator {
+  reportValues :: Map String Value,
+  reportHistory :: Seq (Map String Value)
+  } deriving Show
+
+fullReportGenerator = FullReportGenerator { reportValues = Map.empty, reportHistory = Sequence.empty }
+
+instance ReportGenerator FullReportGenerator Integer where
+  update frg t ms =
+    let vals =
+          Map.foldlWithKey (\ vals k v ->
+                             case Map.lookup k ms of
+                               Nothing -> vals
+                               Just current ->
+                                 let val = case Map.lookup k vals of
+                                             Just value -> value
+                                             Nothing -> defaultValue
+                                     val' = valueWithCurrent val t current
+                                 in Map.insert k val' vals)
+             (reportValues frg)
+             ms
+    in frg { reportValues = vals,
+             reportHistory = (reportHistory frg) |> vals }
+       
+  writeReport frg =
+    do putStrLn ("name" ++ separator ++ valueHeader)
+       let putValues vs =
+             sequence (Map.mapWithKey (\ k v -> putStrLn (k ++ separator ++ (show v))) vs)
+       
+       mapM_ putValues (reportHistory frg)
+
