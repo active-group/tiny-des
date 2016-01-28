@@ -112,7 +112,7 @@ minimalModel =
                            stateChanges = [setValue serverCapacity 1] }
       runToEnter = transition { targetEvent = enterEvent }
       enterToEnter = transition { targetEvent = enterEvent,
-                                  delay = serviceTime }
+                                  delay = interarrivalTime }
       enterToStart = transition { targetEvent = startEvent,
                                   condition = largerThanValueCondition serverCapacity 0 }
       startToLeave = transition { targetEvent = leaveEvent,
