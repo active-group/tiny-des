@@ -8,7 +8,9 @@ import System.Random (mkStdGen)
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import qualified Data.Sequence as Sequence
-import Data.Sequence (Seq, (|>), ViewL ((:<)))
+import Data.Sequence (Seq, (|>))
+import qualified Data.Heap as Heap
+import Data.Heap (MinHeap)
 import System.IO.Unsafe (unsafePerformIO)
 
 type ModelState v = Map String v
@@ -93,7 +95,7 @@ minimalModel =
       serverCapacity = "ServerCapacity"
       serviceTime = constantDelay 6
       interarrivalTime = constantDelay 5
-      runEvent = event { name = "Run",
+      runEvent = event { name = "RUN",
                          transitions = [runToEnter],
                          stateChanges = [setValue serverCapacity 1,
                                          setValue queue 0] }
@@ -108,8 +110,7 @@ minimalModel =
       leaveEvent = event { name = "LEAVE",
                            transitions = [leaveToStart],
                            stateChanges = [setValue serverCapacity 1] }
-      runToEnter = transition { targetEvent = startEvent,
-                                condition = largerThanValueCondition serverCapacity 0 }
+      runToEnter = transition { targetEvent = enterEvent }
       enterToEnter = transition { targetEvent = enterEvent,
                                   delay = serviceTime }
       enterToStart = transition { targetEvent = startEvent,
@@ -139,7 +140,7 @@ class ReportGenerator r v | r -> v where
 newtype Clock = Clock { getCurrentTime :: Time }
   deriving Show
 
-type Simulation r v = State.StateT (Clock, Seq (EventInstance v), r) (ModelAction v)
+type Simulation r v = State.StateT (Clock, MinHeap (EventInstance v), r) (ModelAction v)
 
 setCurrentTime :: Time -> Simulation r v ()
 setCurrentTime t = State.modify (\ (_, evs, r) -> (Clock t, evs, r))
@@ -147,9 +148,11 @@ setCurrentTime t = State.modify (\ (_, evs, r) -> (Clock t, evs, r))
 getNextEvent :: Simulation r v (EventInstance v)
 getNextEvent =
   do (clock, evs, r) <- State.get
-     let ev :< evs' = Sequence.viewl evs
-     State.put (clock, evs', r)
-     return ev
+     case Heap.view evs of
+       Just (ev, evs') ->
+         do State.put (clock, evs', r)
+            return ev
+       Nothing -> fail "can't happen"
 
 updateSystemState :: EventInstance v -> Simulation r v ()
 updateSystemState (EventInstance _ ev) = State.lift (sequence_ (stateChanges ev))
@@ -168,7 +171,7 @@ generateEvents (EventInstance _ ev) =
              (clock, evs, r) <- State.get
              d <- State.lift (delay tr)
              let evi = EventInstance ((getCurrentTime clock) + d) (targetEvent tr)
-             let evs' = evs |> evi
+             let evs' = Heap.insert evi evs
              State.put (clock, evs', r))
         (transitions ev)
 
@@ -179,14 +182,14 @@ timingRoutine =
      setCurrentTime t
      return result
 
--- runSimulation :: ReportGenerator r v => Model v -> Time -> r -> IO _
+runSimulation :: ReportGenerator r v => Model v -> Time -> r -> IO ()
 runSimulation model endTime reportGenerator =
   let clock = Clock 0
       initialEvent = EventInstance (getCurrentTime clock) (startEvent model)
-      eventList = Sequence.singleton initialEvent
+      eventList = Heap.singleton initialEvent
       loop =
         do (clock, evs, r) <- State.get
-           if ((getCurrentTime clock) <= endTime) && not (Sequence.null evs) then
+           if ((getCurrentTime clock) <= endTime) && not (Heap.null evs) then
              do currentEvent <- timingRoutine
                 updateSystemState currentEvent
                 updateStatisticalCounters currentEvent
@@ -197,7 +200,6 @@ runSimulation model endTime reportGenerator =
   in let ma = State.execStateT loop (clock, eventList, reportGenerator)
          (cl', evs, r) = Random.evalRand (State.evalStateT ma Map.empty) (mkStdGen 0)
       in do writeReport r
-            return (cl', evs, r)
 
 -- Report generator
 
