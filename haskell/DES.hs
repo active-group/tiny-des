@@ -106,7 +106,7 @@ minimalModel =
                            priority = -1,
                            transitions = [startToLeave],
                            stateChanges = [setValue serverCapacity 0,
-                                           incrementValue queue 1] }
+                                           incrementValue queue (-1)] }
       leaveEvent = event { name = "LEAVE",
                            transitions = [leaveToStart],
                            stateChanges = [setValue serverCapacity 1] }
