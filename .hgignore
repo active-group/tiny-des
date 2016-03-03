@@ -1,8 +1,0 @@
-syntax: regexp
-.*~$
-\.class$
-^tinydes_sources/target
-^tinydes_sources/metamodel/target/
-^tinydes_sources/simulatorcore/target/
-^tinydes_sources/metamodel/.settings
-^tinydes_sources/simulatorcore/.settings
