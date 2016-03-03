@@ -13,7 +13,7 @@ public class Event {
 
 	private final String name;
 	private int priority;
-	private List<Transition> transistions;
+	private List<Transition> transitions;
 	private List<StateChange> stateChanges;
 
 	/**
@@ -24,7 +24,7 @@ public class Event {
 	public Event(String name) {
 		this.name = name;
 		this.priority = 0;
-		this.transistions = new ArrayList<Transition>();
+		this.transitions = new ArrayList<Transition>();
 		this.stateChanges = new ArrayList<StateChange>();
 	}
 
@@ -41,7 +41,7 @@ public class Event {
 	}
 
 	public List<Transition> getTransistions() {
-		return transistions;
+		return transitions;
 	}
 
 	/**
@@ -50,7 +50,7 @@ public class Event {
 	 * @param transition
 	 */
 	public void addTransistion(Transition transition) {
-		this.transistions.add(transition);
+		this.transitions.add(transition);
 	}
 
 	public List<StateChange> getStateChanges() {
