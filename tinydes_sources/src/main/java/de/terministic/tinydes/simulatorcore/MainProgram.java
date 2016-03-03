@@ -61,11 +61,11 @@ public class MainProgram {
 		this.reportGenerator.update(eventInstance.getTime(), this.modelState);
 
 		// 3. Generate future events and add to event list.
-		for (Transition transistion : event.getTransistions()) {
+		for (Transition transition : event.getTransistions()) {
 
-			if (transistion.getCondition().isTrue(this.modelState)) {
-				Event targetEvent = transistion.getTargetEvent();
-				Delay delay = transistion.getDelay();
+			if (transition.getCondition().isTrue(this.modelState)) {
+				Event targetEvent = transition.getTargetEvent();
+				Delay delay = transition.getDelay();
 
 				this.eventList.addEvent(new EventInstance(this.clock.getCurrentTime() + delay.getDelay(), targetEvent));
 			}
