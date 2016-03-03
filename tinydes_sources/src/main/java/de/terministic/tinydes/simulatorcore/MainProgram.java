@@ -64,11 +64,6 @@ public class MainProgram {
 		for (Transition transistion : event.getTransistions()) {
 
 			if (transistion.getCondition().isTrue(this.modelState)) {
-
-				if (transistion.isInhibiting()) {
-					throw new UnsupportedOperationException("Inhibiting is not supported yet.");
-				}
-
 				Event targetEvent = transistion.getTargetEvent();
 				Delay delay = transistion.getDelay();
 

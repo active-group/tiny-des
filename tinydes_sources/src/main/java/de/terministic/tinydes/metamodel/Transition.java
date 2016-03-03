@@ -14,7 +14,6 @@ public class Transition {
 	private final Event targetEvent;
 	private Condition condition;
 	private Delay delay;
-	private boolean inhibiting;
 
 	/**
 	 * Creates a transition to given target event. This transitions has the
@@ -36,7 +35,6 @@ public class Transition {
 		this.targetEvent = targetEvent;
 		this.condition = new TrueCondition();
 		this.delay = new ZeroDelay();
-		this.inhibiting = false;
 	}
 
 	public Event getTargetEvent() {
@@ -58,13 +56,4 @@ public class Transition {
 	public void setDelay(Delay delay) {
 		this.delay = delay;
 	}
-
-	public boolean isInhibiting() {
-		return inhibiting;
-	}
-
-	public void setInhibiting(boolean inhibiting) {
-		this.inhibiting = inhibiting;
-	}
-
 }
