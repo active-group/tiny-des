@@ -27,11 +27,6 @@ getValue name =
      let (Just v) = Map.lookup name ms
      return v
 
-setValue :: Monad m => String -> v -> ModelActionT v m ()
-setValue name value =
-  do ms <- State.get
-     State.put (Map.insert name value ms)
-
 modifyValue :: Monad m => String -> (v -> v) -> ModelActionT v m ()
 modifyValue name f =
   State.modify (\ ms -> Map.adjust (\ v -> f  v) name ms)
@@ -73,10 +68,14 @@ transition = Transition { targetEvent = undefined, condition = trueCondition, de
 
 type StateChange v m = ModelActionT v m ()
 
-incrementValue :: (Num a, Monad m) => String -> a -> ModelActionT a m ()
+setValue :: Monad m => String -> v -> StateChange v m
+setValue name value =
+  do ms <- State.get
+     State.put (Map.insert name value ms)
+
+incrementValue :: (Num a, Monad m) => String -> a -> StateChange a m
 incrementValue name inc =
   modifyValue name ((+) inc)
-  
 
 data Event v m = Event { name :: String,
                          priority :: Int,
