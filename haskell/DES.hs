@@ -16,29 +16,29 @@ import System.IO.Unsafe (unsafePerformIO)
 type ModelState v = Map String v
 
 -- Model monad
-type ModelAction v = State.StateT (ModelState v) (Random.Rand Random.StdGen)
+type ModelActionT v m = State.StateT (ModelState v) m
 
-getModelState :: ModelAction v (ModelState v)
+getModelState :: Monad m => ModelActionT v m (ModelState v)
 getModelState = State.get
 
-getValue :: String -> ModelAction v v
+getValue :: Monad m => String -> ModelActionT v m v
 getValue name =
   do ms <- State.get
      let (Just v) = Map.lookup name ms
      return v
 
-setValue :: String -> v -> ModelAction v ()
+setValue :: Monad m => String -> v -> ModelActionT v m ()
 setValue name value =
   do ms <- State.get
      State.put (Map.insert name value ms)
 
-modifyValue :: String -> (v -> v) -> ModelAction v ()
+modifyValue :: Monad m => String -> (v -> v) -> ModelActionT v m ()
 modifyValue name f =
   State.modify (\ ms -> Map.adjust (\ v -> f  v) name ms)
   
-data Model v = Model {
+data Model v m = Model {
   modelName :: String,
-  startEvent :: Event v
+  startEvent :: Event v m
   }
 
 type Condition v = ModelState v -> Bool
@@ -50,46 +50,48 @@ largerThanValueCondition :: Ord a => String -> a -> Condition a
 largerThanValueCondition name value ms =
   let (Just value') = Map.lookup name ms
   in  value' > value
-  
-type Delay v = ModelAction v Integer
 
-zeroDelay :: Delay v
+type Random = Random.Rand Random.StdGen
+      
+type Delay = Random Integer
+
+zeroDelay :: Delay
 zeroDelay = return 0
-constantDelay :: Integer -> Delay Integer
+constantDelay :: Integer -> Delay
 constantDelay v = return v
 
-exponentialDelay :: Double -> Delay v
+exponentialDelay :: Double -> Delay
 exponentialDelay mean =
   do u <- Random.getRandom
      return (round (-mean * log u))
   
-data Transition v = Transition { targetEvent :: Event v,
-                                 condition :: Condition v,
-                                 delay :: Delay v }
+data Transition v m = Transition { targetEvent :: Event v m,
+                                   condition :: Condition v,
+                                   delay :: Delay }
 
 transition = Transition { targetEvent = undefined, condition = trueCondition, delay = zeroDelay }
 
-type StateChange v = ModelAction v ()
+type StateChange v m = ModelActionT v m ()
 
-incrementValue :: Num a => String -> a -> ModelAction a ()
+incrementValue :: (Num a, Monad m) => String -> a -> ModelActionT a m ()
 incrementValue name inc =
   modifyValue name ((+) inc)
   
 
-data Event v = Event { name :: String,
-                       priority :: Int,
-                       transitions :: [Transition v],
-                       stateChanges :: [StateChange v] }
+data Event v m = Event { name :: String,
+                         priority :: Int,
+                         transitions :: [Transition v m],
+                         stateChanges :: [StateChange v m] }
 
-instance Eq (Event v) where
+instance Eq (Event v m) where
   e1 == e2 = (name e1) == (name e2)
 
-instance Show (Event v) where
+instance Show (Event v m) where
   show e = "Event { name = " ++ (name e) ++ " }"
 
 event = Event { name = "UNKNOWN", priority = 0, transitions = [], stateChanges = [] }
 
-minimalModel =
+minimalModel () = -- () is because we're parameterized over monad
   let queue = "Queue"
       serverCapacity = "ServerCapacity"
       serviceTime = constantDelay 6
@@ -123,10 +125,10 @@ minimalModel =
 
 type Time = Integer
 
-data EventInstance v = EventInstance Time (Event v)
+data EventInstance v m = EventInstance Time (Event v m)
   deriving (Show, Eq)
 
-instance Ord (EventInstance v) where
+instance Ord (EventInstance v m) where
   compare (EventInstance t1 e1) (EventInstance t2 e2) =
     case compare t1 t2 of
       EQ -> compare (priority e1) (priority e2)
@@ -139,12 +141,12 @@ class ReportGenerator r v | r -> v where
 newtype Clock = Clock { getCurrentTime :: Time }
   deriving Show
 
-type Simulation r v = State.StateT (Clock, MinHeap (EventInstance v), r) (ModelAction v)
+type Simulation r v m = State.StateT (Clock, MinHeap (EventInstance v m), r) (ModelActionT v m)
 
-setCurrentTime :: Time -> Simulation r v ()
+setCurrentTime :: Monad m => Time -> Simulation r v m ()
 setCurrentTime t = State.modify (\ (_, evs, r) -> (Clock t, evs, r))
 
-getNextEvent :: Simulation r v (EventInstance v)
+getNextEvent :: Monad m => Simulation r v m (EventInstance v m)
 getNextEvent =
   do (clock, evs, r) <- State.get
      case Heap.view evs of
@@ -153,12 +155,12 @@ getNextEvent =
             return ev
        Nothing -> fail "can't happen"
 
-updateSystemState :: EventInstance v -> Simulation r v ()
+updateSystemState :: Monad m => EventInstance v m -> Simulation r v m ()
 updateSystemState (EventInstance _ ev) = State.lift (sequence_ (stateChanges ev))
 
 -- FIXME: Don't update incrementally, instead do everything based on consistent old state.
 
-updateStatisticalCounters :: ReportGenerator r v => EventInstance v -> Simulation r v ()
+updateStatisticalCounters :: Monad m => ReportGenerator r v => EventInstance v m -> Simulation r v m ()
 updateStatisticalCounters (EventInstance t _) =
   do (clock, evs, r) <- State.get
      ms <- State.lift State.get
@@ -169,7 +171,7 @@ generateEvents (EventInstance _ ev) =
           do ms <- State.lift getModelState
              if condition tr ms then
                do (clock, evs, r) <- State.get
-                  d <- State.lift (delay tr)
+                  d <- State.lift (State.lift (delay tr))
                   let evi = EventInstance ((getCurrentTime clock) + d) (targetEvent tr)
                   let evs' = Heap.insert evi evs
                   State.put (clock, evs', r)
@@ -177,14 +179,14 @@ generateEvents (EventInstance _ ev) =
                return ())
          (transitions ev)
 
-timingRoutine :: Simulation r v (EventInstance v)
+timingRoutine :: Monad m => Simulation r v m (EventInstance v m)
 timingRoutine =
   do result <- getNextEvent
      let (EventInstance t e) = result
      setCurrentTime t
      return result
 
-runSimulation :: ReportGenerator r v => Model v -> Time -> r -> IO ()
+runSimulation :: (ReportGenerator r v) => Model v Random -> Time -> r -> IO ()
 runSimulation model endTime reportGenerator =
   let clock = Clock 0
       initialEvent = EventInstance (getCurrentTime clock) (startEvent model)
