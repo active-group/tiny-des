@@ -41,16 +41,16 @@ data Model v = Model {
   startEvent :: Event v
   }
 
-type Condition v = ModelAction v Bool
+type Condition v = ModelState v -> Bool
 
 trueCondition :: Condition v
-trueCondition = return True
+trueCondition = \ _ -> True
 
 largerThanValueCondition :: Ord a => String -> a -> Condition a
-largerThanValueCondition name value =
-  do value' <- getValue name
-     return (value' > value)
-
+largerThanValueCondition name value ms =
+  let (Just value') = Map.lookup name ms
+  in  value' > value
+  
 type Delay v = ModelAction v Integer
 
 zeroDelay :: Delay v
@@ -167,8 +167,8 @@ updateStatisticalCounters (EventInstance t _) =
 
 generateEvents (EventInstance _ ev) =
   mapM_ (\ tr ->
-          do t <- State.lift (condition tr)
-             if t then
+          do ms <- State.lift getModelState
+             if condition tr ms then
                do (clock, evs, r) <- State.get
                   d <- State.lift (delay tr)
                   let evi = EventInstance ((getCurrentTime clock) + d) (targetEvent tr)
