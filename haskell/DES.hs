@@ -75,7 +75,9 @@ setValue name value =
 
 incrementValue :: (Num a, Monad m) => String -> a -> StateChange a m
 incrementValue name inc =
-  modifyValue name ((+) inc)
+  do ms <- State.get
+     let (Just v) = Map.lookup name ms
+     setValue name (v + inc)
 
 data Event v m = Event { name :: String,
                          priority :: Int,
