@@ -65,10 +65,9 @@ exponentialDelay mean =
   
 data Transition v = Transition { targetEvent :: Event v,
                                  condition :: Condition v,
-                                 delay :: Delay v,
-                                 inhibiting :: Bool }
+                                 delay :: Delay v }
 
-transition = Transition { targetEvent = undefined, condition = trueCondition, delay = zeroDelay, inhibiting = False }
+transition = Transition { targetEvent = undefined, condition = trueCondition, delay = zeroDelay }
 
 type StateChange v = ModelAction v ()
 
