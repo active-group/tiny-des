@@ -40,7 +40,7 @@ public class Event {
 		this.priority = priority;
 	}
 
-	public List<Transition> getTransistions() {
+	public List<Transition> getTransitions() {
 		return transitions;
 	}
 
@@ -49,7 +49,7 @@ public class Event {
 	 * 
 	 * @param transition
 	 */
-	public void addTransistion(Transition transition) {
+	public void addTransition(Transition transition) {
 		this.transitions.add(transition);
 	}
 

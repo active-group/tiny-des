@@ -108,11 +108,11 @@ public class Mm1Model implements Model {
 		leaveToStart.setCondition(new LargerThanValueCondition(QUEUE, 0L));
 
 		// Assign edges to the events.
-		runEvent.addTransistion(runToEnter);
-		enterEvent.addTransistion(enterToEnter);
-		enterEvent.addTransistion(enterToStart);
-		startEvent.addTransistion(startToLeave);
-		leaveEvent.addTransistion(leaveToStart);
+		runEvent.addTransition(runToEnter);
+		enterEvent.addTransition(enterToEnter);
+		enterEvent.addTransition(enterToStart);
+		startEvent.addTransition(startToLeave);
+		leaveEvent.addTransition(leaveToStart);
 		
 		// Defining the initial event.
 		this.initialEvent = runEvent;

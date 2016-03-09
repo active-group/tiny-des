@@ -61,7 +61,7 @@ public class MainProgram {
 		this.reportGenerator.update(eventInstance.getTime(), this.modelState);
 
 		// 3. Generate future events and add to event list.
-		for (Transition transition : event.getTransistions()) {
+		for (Transition transition : event.getTransitions()) {
 
 			if (transition.getCondition().isTrue(this.modelState)) {
 				Event targetEvent = transition.getTargetEvent();
