@@ -187,7 +187,7 @@ timingRoutine =
      setCurrentTime t
      return result
 
-runSimulation :: (ReportGenerator r v) => Model v Random -> Time -> r -> IO ()
+runSimulation :: (ReportGenerator r v) => Model v Random -> Time -> r -> r
 runSimulation model endTime reportGenerator =
   let clock = Clock 0
       initialEvent = EventInstance (getCurrentTime clock) (startEvent model)
@@ -203,9 +203,9 @@ runSimulation model endTime reportGenerator =
                 loop
            else
              return ()
-  in let ma = State.execStateT loop (clock, eventList, reportGenerator)
-         (cl', evs, r) = Random.evalRand (State.evalStateT ma Map.empty) (mkStdGen 0)
-      in do writeReport r
+      ma = State.execStateT loop (clock, eventList, reportGenerator)
+      (cl', evs, r) = Random.evalRand (State.evalStateT ma Map.empty) (mkStdGen 0)
+  in r
 
 -- Report generator
 
