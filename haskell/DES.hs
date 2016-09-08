@@ -156,8 +156,8 @@ getNextEvent =
             return ev
        Nothing -> fail "can't happen"
 
-updateSystemState :: Monad m => EventInstance v m -> Simulation r v m ()
-updateSystemState (EventInstance _ ev) = State.lift (sequence_ (stateChanges ev))
+updateModelState :: Monad m => EventInstance v m -> Simulation r v m ()
+updateModelState (EventInstance _ ev) = State.lift (sequence_ (stateChanges ev))
 
 -- FIXME: Don't update incrementally, instead do everything based on consistent old state.
 
@@ -193,8 +193,8 @@ simulation endTime =
         do (clock, evs, r) <- State.get
            if ((getCurrentTime clock) <= endTime) && not (Heap.null evs) then
              do currentEvent <- timingRoutine
-                -- seq (unsafePerformIO (putStrLn (show currentEvent))) (updateSystemState currentEvent)
-                updateSystemState currentEvent
+                -- seq (unsafePerformIO (putStrLn (show currentEvent))) (updateModelState currentEvent)
+                updateModelState currentEvent
                 updateStatisticalCounters currentEvent
                 generateEvents currentEvent
                 loop
