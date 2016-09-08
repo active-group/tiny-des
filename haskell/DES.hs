@@ -187,12 +187,9 @@ timingRoutine =
      setCurrentTime t
      return result
 
-runSimulation :: (ReportGenerator r v) => Model v Random -> Time -> r -> r
-runSimulation model endTime reportGenerator =
-  let clock = Clock 0
-      initialEvent = EventInstance (getCurrentTime clock) (startEvent model)
-      eventList = Heap.singleton initialEvent
-      loop =
+simulation :: ReportGenerator r v => Time -> Simulation r v Random ()
+simulation endTime =
+  let loop =
         do (clock, evs, r) <- State.get
            if ((getCurrentTime clock) <= endTime) && not (Heap.null evs) then
              do currentEvent <- timingRoutine
@@ -203,9 +200,20 @@ runSimulation model endTime reportGenerator =
                 loop
            else
              return ()
-      ma = State.execStateT loop (clock, eventList, reportGenerator)
+  in loop
+
+minHeapSingleton :: Ord item => item -> MinHeap item
+minHeapSingleton x = Heap.singleton x
+
+runSimulation :: ReportGenerator r v => Simulation r v Random () -> Model v Random -> Time -> r -> r
+runSimulation sim model clock reportGenerator =
+  let clock = Clock 0
+      initialEvent = EventInstance (getCurrentTime clock) (startEvent model)
+      eventList = minHeapSingleton initialEvent
+      ma = State.execStateT sim (clock, eventList, reportGenerator)
       (cl', evs, r) = Random.evalRand (State.evalStateT ma Map.empty) (mkStdGen 0)
   in r
+
 
 -- Report generator
 
