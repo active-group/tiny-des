@@ -202,14 +202,11 @@ simulation endTime =
              return ()
   in loop
 
-minHeapSingleton :: Ord item => item -> MinHeap item
-minHeapSingleton x = Heap.singleton x
-
 runSimulation :: ReportGenerator r v => Simulation r v Random () -> Model v Random -> Time -> r -> r
 runSimulation sim model clock reportGenerator =
   let clock = Clock 0
       initialEvent = EventInstance (getCurrentTime clock) (startEvent model)
-      eventList = minHeapSingleton initialEvent
+      eventList = Heap.singleton initialEvent
       ma = State.execStateT sim (clock, eventList, reportGenerator)
       (cl', evs, r) = Random.evalRand (State.evalStateT ma Map.empty) (mkStdGen 0)
   in r
