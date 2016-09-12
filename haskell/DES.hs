@@ -142,17 +142,23 @@ class ReportGenerator r v | r -> v where
 newtype Clock = Clock { getCurrentTime :: Time }
   deriving Show
 
-type Simulation r v m = State.StateT (Clock, MinHeap (EventInstance v m), r) (ModelActionT v m)
+data SimulationState r v m = SimulationState {
+  clock :: Clock,
+  events :: MinHeap (EventInstance v m),
+  reportGenerator :: r
+}
+
+type Simulation r v m = State.StateT (SimulationState r v m) (ModelActionT v m)
 
 setCurrentTime :: Monad m => Time -> Simulation r v m ()
-setCurrentTime t = State.modify (\ (_, evs, r) -> (Clock t, evs, r))
+setCurrentTime t = State.modify (\ ss -> ss { clock = Clock t })
 
 getNextEvent :: Monad m => Simulation r v m (EventInstance v m)
 getNextEvent =
-  do (clock, evs, r) <- State.get
-     case Heap.view evs of
+  do ss <- State.get
+     case Heap.view (events ss) of
        Just (ev, evs') ->
-         do State.put (clock, evs', r)
+         do State.put (ss { events = evs' })
             return ev
        Nothing -> fail "can't happen"
 
@@ -163,19 +169,20 @@ updateModelState (EventInstance _ ev) = State.lift (sequence_ (stateChanges ev))
 
 updateStatisticalCounters :: Monad m => ReportGenerator r v => EventInstance v m -> Simulation r v m ()
 updateStatisticalCounters (EventInstance t _) =
-  do (clock, evs, r) <- State.get
+  do ss <- State.get
      ms <- State.lift State.get
-     State.put (clock, evs, update r t ms)
+     State.put (ss {reportGenerator = update (reportGenerator ss) t ms})
 
+generateEvents :: EventInstance v Random -> Simulation r v Random ()
 generateEvents (EventInstance _ ev) =
   mapM_ (\ tr ->
           do ms <- State.lift getModelState
              if condition tr ms then
-               do (clock, evs, r) <- State.get
+               do ss <- State.get
                   d <- State.lift (State.lift (delay tr))
-                  let evi = EventInstance ((getCurrentTime clock) + d) (targetEvent tr)
-                  let evs' = Heap.insert evi evs
-                  State.put (clock, evs', r)
+                  let evi = EventInstance ((getCurrentTime (clock ss)) + d) (targetEvent tr)
+                  let evs' = Heap.insert evi (events ss)
+                  State.put (ss { events = evs' })
              else
                return ())
          (transitions ev)
@@ -190,8 +197,8 @@ timingRoutine =
 simulation :: ReportGenerator r v => Time -> Simulation r v Random ()
 simulation endTime =
   let loop =
-        do (clock, evs, r) <- State.get
-           if ((getCurrentTime clock) <= endTime) && not (Heap.null evs) then
+        do ss <- State.get
+           if ((getCurrentTime (clock ss)) <= endTime) && not (Heap.null (events ss)) then
              do currentEvent <- timingRoutine
                 -- seq (unsafePerformIO (putStrLn (show currentEvent))) (updateModelState currentEvent)
                 updateModelState currentEvent
@@ -203,13 +210,13 @@ simulation endTime =
   in loop
 
 runSimulation :: ReportGenerator r v => Simulation r v Random () -> Model v Random -> Time -> r -> r
-runSimulation sim model clock reportGenerator =
+runSimulation sim model clock rg =
   let clock = Clock 0
       initialEvent = EventInstance (getCurrentTime clock) (startEvent model)
       eventList = Heap.singleton initialEvent
-      ma = State.execStateT sim (clock, eventList, reportGenerator)
-      (cl', evs, r) = Random.evalRand (State.evalStateT ma Map.empty) (mkStdGen 0)
-  in r
+      ma = State.execStateT sim (SimulationState { clock = clock, events = eventList, reportGenerator = rg })
+      ss = Random.evalRand (State.evalStateT ma Map.empty) (mkStdGen 0)
+  in reportGenerator ss
 
 
 -- Report generator
