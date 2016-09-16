@@ -16,7 +16,7 @@ import System.IO.Unsafe (unsafePerformIO)
 type ModelState v = Map String v
 
 -- Model monad
-type ModelAction v = State.State (ModelState v)
+type ModelAction v = State (ModelState v)
 
 getModelState :: ModelAction v (ModelState v)
 getModelState = State.get
@@ -150,7 +150,7 @@ data SimulationState r v = SimulationState {
   randomGenerator :: Random.StdGen
 }
 
-type Simulation r v = State.State (SimulationState r v)
+type Simulation r v = State (SimulationState r v)
 
 setCurrentTime :: Time -> Simulation r v ()
 setCurrentTime t = State.modify (\ ss -> ss { clock = Clock t })
